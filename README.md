@@ -21,8 +21,8 @@ TODO: Write up
 ## Tasks breakdown
 
 ### VWAP Calculation Engine
-- [ ] CalculateVWAP
-- [ ] Tests
+- [x] CalculateVWAP
+- [x] Tests
 
 ### Coinbase Websocket client (crypto-streamer)
 - [ ] Interface (Subscribe, Unsubscribe)   
