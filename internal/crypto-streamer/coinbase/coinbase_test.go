@@ -5,36 +5,43 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 	"net/http"
 	"testing"
-	"time"
 )
 
 var (
-	errMsg  = Message{Type: RespTypErr, Message: "test error message"}
+	errMsg  = Message{Type: TypeError, Message: "test error message"}
+	subsMsg = Message{Type: TypeSubscriptions, Channels: Channels{
+		NewChannel("matches", "BTC-USD", "ETH-BTC"),
+	}}
 	matches = []Message{
 		{
 			Type:      "match",
-			ProductID: "BTC-USD",
-			Price:     "1",
+			Sequence:  1,
+			ProductID: "ETH-BTC",
+			Price:     "1.0",
 			Size:      "0.1",
 		},
 		{
 			Type:      "match",
+			Sequence:  2,
 			ProductID: "BTC-USD",
-			Price:     "2",
+			Price:     "2.0",
 			Size:      "0.2",
 		},
 		{
 			Type:      "match",
-			ProductID: "BTC-USD",
-			Price:     "3",
+			Sequence:  3,
+			ProductID: "ETH-BTC",
+			Price:     "3.0",
 			Size:      "0.3",
 		},
 		{
 			Type:      "match",
+			Sequence:  4,
 			ProductID: "BTC-USD",
-			Price:     "4",
+			Price:     "4.0",
 			Size:      "0.4",
 		},
 	}
@@ -67,13 +74,13 @@ func TestNew(t *testing.T) {
 	}
 	tests := map[string]struct {
 		args    args
-		want    *Coinbase
+		want    *WSClient
 		wantErr bool
 	}{
-		"success?": {
+		"it should successfully subscribe": {
 			args: args{
 				ctx: context.Background(),
-				url: wsUrl,
+				url: _wsUrl,
 			},
 			want:    nil,
 			wantErr: false,
@@ -85,16 +92,21 @@ func TestNew(t *testing.T) {
 			//defer s.Close()
 
 			//u := "ws" + strings.TrimPrefix(s.URL, "http")
-			got, err := New(tt.args.ctx, wsUrl)
+			logger, err := zap.NewDevelopment()
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer got.wsClient.conn.Close()
+
+			got, err := NewClient(tt.args.ctx, WithLogger(logger))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer got.conn.Close()
 
 			go func() {
-				time.Sleep(20 * time.Second)
-				err = got.wsClient.Subscribe(Channels{
-					NewChannel(ReqTypMatches, "BTC-USD", "ETH-USD", "ETH-BTC", "BTC-EUR", "BTC-AUD", "ETH-EUR"),
+				//time.Sleep(20 * time.Second)
+				err = got.Subscribe(Channels{
+					NewChannel(ChannelMatches, "BTC-USD", "ETH-USD", "ETH-BTC", "BTC-EUR", "BTC-AUD", "ETH-EUR"),
 				})
 				if err != nil {
 					t.Fatal(err)
@@ -104,15 +116,14 @@ func TestNew(t *testing.T) {
 				//got.wsClient.conn.Close()
 			}()
 
-			receiver := make(chan Message)
-			done := got.wsClient.Feeds(receiver)
+			feeds, done := got.Feeds()
 
 		Selector:
 			for {
 				select {
 				case <-done:
 					break Selector
-				case msg := <-receiver:
+				case msg := <-feeds:
 					data, err := json.MarshalIndent(msg, "", "  ")
 					if err != nil {
 						t.Fatal(err)
