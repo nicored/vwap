@@ -163,9 +163,10 @@ func TestWSClient_Subscribe(t *testing.T) {
 		channels Channels
 	}
 	tests := map[string]struct {
-		args     args
-		wantErr  assert.ErrorAssertionFunc
-		messages []Message
+		args      args
+		wantErr   assert.ErrorAssertionFunc
+		messages  []Message
+		closeConn bool
 	}{
 		"it should subscribe successfully": {
 			args: args{
@@ -175,6 +176,17 @@ func TestWSClient_Subscribe(t *testing.T) {
 			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
 				return false
 			},
+			closeConn: false,
+		},
+		"it should error when unsubscribing": {
+			args: args{
+				channels: channels,
+			},
+			messages: []Message{subscriptionsMsg},
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return true
+			},
+			closeConn: true,
 		},
 	}
 	for name, tt := range tests {
@@ -188,7 +200,25 @@ func TestWSClient_Subscribe(t *testing.T) {
 			}
 			defer w.Close()
 
+			// closing the connection should throw an error
+			if tt.closeConn {
+				w.Close()
+			}
+
 			tt.wantErr(t, w.Subscribe(tt.args.channels), fmt.Sprintf("Subscribe(%v)", tt.args.channels))
+
+			if !tt.closeConn {
+				serverIncomingMsg := Message{}
+				err = w.conn.ReadJSON(&serverIncomingMsg)
+				if err != nil {
+					t.Fatalf("read server incoming: unexpected error: %v", err)
+				}
+
+				assert.Equal(t, serverIncomingMsg, Message{
+					Type:     Subscribe,
+					Channels: channels,
+				})
+			}
 		})
 	}
 }
@@ -198,11 +228,12 @@ func TestWSClient_Unsubscribe(t *testing.T) {
 		channels Channels
 	}
 	tests := map[string]struct {
-		args     args
-		messages []Message
-		wantErr  assert.ErrorAssertionFunc
+		args      args
+		messages  []Message
+		wantErr   assert.ErrorAssertionFunc
+		closeConn bool
 	}{
-		"it should subscribe unsuccessfully": {
+		"it should unsubscribe successfully": {
 			args: args{
 				channels: channels,
 			},
@@ -210,6 +241,16 @@ func TestWSClient_Unsubscribe(t *testing.T) {
 			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
 				return false
 			},
+		},
+		"it should error when unsubscribing": {
+			args: args{
+				channels: channels,
+			},
+			messages: []Message{subscriptionsMsg},
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return true
+			},
+			closeConn: true,
 		},
 	}
 	for name, tt := range tests {
@@ -223,7 +264,25 @@ func TestWSClient_Unsubscribe(t *testing.T) {
 			}
 			defer w.Close()
 
+			// closing the connection should throw an error
+			if tt.closeConn {
+				w.Close()
+			}
+
 			tt.wantErr(t, w.Unsubscribe(tt.args.channels), fmt.Sprintf("Unsubscribe(%v)", tt.args.channels))
+
+			if !tt.closeConn {
+				serverIncomingMsg := Message{}
+				err = w.conn.ReadJSON(&serverIncomingMsg)
+				if err != nil {
+					t.Fatalf("read server incoming: unexpected error: %v", err)
+				}
+
+				assert.Equal(t, serverIncomingMsg, Message{
+					Type:     Unsubscribe,
+					Channels: channels,
+				})
+			}
 		})
 	}
 }
