@@ -26,11 +26,12 @@ TODO: Write up
 
 ### Coinbase Websocket client (crypto-streamer)
 - [ ] Interface (Subscribe, Unsubscribe)   
-- [ ] Coinbase client
-- [ ] Subscribe to channel & products
-- [ ] Subscription tests
-- [ ] Unsubscribe
-- [ ] Unsubscription tests
+- [x] Coinbase client
+- [x] Subscribe to channel & products
+- [x] Subscription tests
+- [x] Unsubscribe
+- [x] Unsubscription tests
+- [x] Feeds + tests
 
 ### Message broker (mbroker)
 - [ ] PublishCloser Interface
