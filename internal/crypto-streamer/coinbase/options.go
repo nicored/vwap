@@ -22,6 +22,9 @@ func (l loggerOption) apply(opts *options) {
 }
 
 func WithLogger(log *zap.Logger) Option {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return loggerOption{Log: log}
 }
 

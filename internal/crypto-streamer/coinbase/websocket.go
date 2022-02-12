@@ -112,18 +112,19 @@ func (w *WSClient) Close() error {
 }
 
 // Feeds sends new messages to the receiver channel
-func (w *WSClient) Feeds() (feeds chan Message, done chan bool) {
-	done = make(chan bool)
-	feeds = make(chan Message)
+func (w *WSClient) Feeds() (feeds chan Message, errors chan error) {
+	errors = make(chan error, 1)
+	feeds = make(chan Message, 1)
 
 	go func() {
 		defer func() {
-			done <- true
+			close(errors)
+			close(feeds)
 		}()
 
 		// The server is rate limited to 100 requests / second per IP address
 		// This limit could be reached when subscribing to several products with high amounts of trades.
-		// We want to log whenever we exceed this limit and may decide to do something about it in the future if this
+		// We expectedClient to log whenever we exceed this limit and may decide to do something about it in the future if this
 		// becomes an issue
 		tick := time.Tick(1 * time.Second)
 		nReqsPerSec := 0
@@ -141,14 +142,14 @@ func (w *WSClient) Feeds() (feeds chan Message, done chan bool) {
 
 			case <-w.ctx.Done():
 				if err := w.conn.Close(); err != nil {
-					w.logger.Sugar().Errorf("failed to close websocket connection: %v", err)
+					errors <- fmt.Errorf("close connection: %w", err)
 				}
 				return
 
 			default:
 				subMsg := Message{}
 				if err := w.conn.ReadJSON(&subMsg); err != nil {
-					w.logger.Sugar().Errorf("failed to read message from server: %v", err)
+					errors <- fmt.Errorf("read message: %w", err)
 					return
 				}
 
