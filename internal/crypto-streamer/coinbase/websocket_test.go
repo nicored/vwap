@@ -360,7 +360,7 @@ func TestWSClient_Feeds_should_error_when_connection_closed(t *testing.T) {
 
 	_, errFeeds := w.Feeds()
 
-	// bring down server
+	// close connection to generate an error
 	w.Close()
 
 	select {
