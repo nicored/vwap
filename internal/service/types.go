@@ -29,3 +29,11 @@ type Streamer interface {
 }
 
 var _ Streamer = (*coinbase.WSClient)(nil)
+
+type Servicer interface {
+	Run() error
+	AddTradingPairs(pairs ...string)
+	Stop()
+}
+
+var _ Servicer = (*Service)(nil)
