@@ -2,6 +2,7 @@ package coinbase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	ws "github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -15,7 +16,8 @@ const (
 )
 
 const (
-	ChannelMatches = "matches"
+	ChannelMatches   = "matches"
+	ChannelHeartbeat = "heartbeat"
 
 	Subscribe   = "subscribe"
 	Unsubscribe = "unsubscribe"
@@ -78,10 +80,15 @@ func NewClient(ctx context.Context, opts ...Option) (*WSClient, error) {
 }
 
 // Subscribe subscribes to the provided channels and product ids
-func (w *WSClient) Subscribe(channels Channels) error {
+func (w *WSClient) Subscribe(channel string, productIDs ...string) error {
 	reqMsg := Message{
-		Type:     Subscribe,
-		Channels: channels,
+		Type: Subscribe,
+		Channels: []Channel{
+			{
+				Name:       channel,
+				ProductIDs: productIDs,
+			},
+		},
 	}
 	if err := w.conn.WriteJSON(reqMsg); err != nil {
 		return fmt.Errorf("write message: %w", err)
@@ -91,10 +98,15 @@ func (w *WSClient) Subscribe(channels Channels) error {
 }
 
 // Unsubscribe unsubscribes from the provided channels and products ids
-func (w *WSClient) Unsubscribe(channels Channels) error {
+func (w *WSClient) Unsubscribe(channel string, productIDs ...string) error {
 	reqMsg := Message{
-		Type:     Unsubscribe,
-		Channels: channels,
+		Type: Unsubscribe,
+		Channels: []Channel{
+			{
+				Name:       channel,
+				ProductIDs: productIDs,
+			},
+		},
 	}
 	if err := w.conn.WriteJSON(reqMsg); err != nil {
 		return fmt.Errorf("write message: %w", err)
@@ -112,9 +124,9 @@ func (w *WSClient) Close() error {
 }
 
 // Feeds sends new messages to the receiver channel
-func (w *WSClient) Feeds() (feeds chan Message, errors chan error) {
+func (w *WSClient) Feeds() (feeds chan []byte, errors chan error) {
 	errors = make(chan error, 1)
-	feeds = make(chan Message, 1)
+	feeds = make(chan []byte)
 
 	go func() {
 		defer func() {
@@ -147,17 +159,22 @@ func (w *WSClient) Feeds() (feeds chan Message, errors chan error) {
 				return
 
 			default:
-				subMsg := Message{}
-				if err := w.conn.ReadJSON(&subMsg); err != nil {
+				_, msg, err := w.conn.ReadMessage()
+				if err != nil {
 					errors <- fmt.Errorf("read message: %w", err)
 					return
 				}
 
-				if subMsg.Type == TypeSubscriptions {
-					w.logger.Info("subscription updated", zap.Any("channels", subMsg.Channels))
+				subMsg := Message{}
+				if err = json.Unmarshal(msg, &subMsg); err != nil {
+					w.logger.Sugar().Errorf("failed to unmarshal message: %v", err)
+				} else {
+					if subMsg.Type == TypeSubscriptions {
+						w.logger.Info("subscription updated", zap.Any("channels", subMsg.Channels))
+					}
 				}
 
-				feeds <- subMsg
+				feeds <- msg
 				nReqsPerSec++
 			}
 		}

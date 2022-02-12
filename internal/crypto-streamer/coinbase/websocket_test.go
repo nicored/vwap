@@ -2,8 +2,8 @@ package coinbase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -23,6 +23,8 @@ var (
 		NewChannel("matches", "BTC-USD", "ETH-BTC"),
 		NewChannel("heartbeat", "BTC-USD", "ETH-BTC"),
 	}
+
+	productIDs = []string{"BTC-USD", "ETH-BTC"}
 
 	subscriptionsMsg = Message{Type: TypeSubscriptions, Channels: channels}
 
@@ -205,7 +207,7 @@ func TestWSClient_Subscribe(t *testing.T) {
 				w.Close()
 			}
 
-			tt.wantErr(t, w.Subscribe(tt.args.channels), fmt.Sprintf("Subscribe(%v)", tt.args.channels))
+			tt.wantErr(t, w.Subscribe(ChannelMatches, productIDs...), "Subscribe(matches)")
 
 			if !tt.closeConn {
 				serverIncomingMsg := Message{}
@@ -215,8 +217,10 @@ func TestWSClient_Subscribe(t *testing.T) {
 				}
 
 				assert.Equal(t, serverIncomingMsg, Message{
-					Type:     Subscribe,
-					Channels: channels,
+					Type: Subscribe,
+					Channels: Channels{
+						Channel{Name: ChannelMatches, ProductIDs: productIDs},
+					},
 				})
 			}
 		})
@@ -269,7 +273,7 @@ func TestWSClient_Unsubscribe(t *testing.T) {
 				w.Close()
 			}
 
-			tt.wantErr(t, w.Unsubscribe(tt.args.channels), fmt.Sprintf("Unsubscribe(%v)", tt.args.channels))
+			tt.wantErr(t, w.Unsubscribe(ChannelMatches, productIDs...), "Unsubscribe()")
 
 			if !tt.closeConn {
 				serverIncomingMsg := Message{}
@@ -279,8 +283,10 @@ func TestWSClient_Unsubscribe(t *testing.T) {
 				}
 
 				assert.Equal(t, serverIncomingMsg, Message{
-					Type:     Unsubscribe,
-					Channels: channels,
+					Type: Unsubscribe,
+					Channels: Channels{
+						Channel{Name: "matches", ProductIDs: productIDs},
+					},
 				})
 			}
 		})
@@ -325,9 +331,14 @@ func TestWSClient_Feeds_should_succeed(t *testing.T) {
 				case <-time.Tick(1 * time.Second):
 					t.Fatalf("timed out waiting for feed")
 				case msg := <-feeds:
+					subMsg := Message{}
+					if err = json.Unmarshal(msg, &subMsg); err != nil {
+						t.Fatalf("error unmarshalling response")
+					}
+
 					// assert that we log subscriptions
 					allLogs := observedLogs.All()
-					if msg.Type == TypeSubscriptions {
+					if subMsg.Type == TypeSubscriptions {
 						assert.Equal(t, "subscription updated", allLogs[0].Message)
 						assert.ElementsMatch(t, []zap.Field{
 							{Key: "channels", Type: zapcore.StringerType, Interface: channels},
@@ -336,7 +347,7 @@ func TestWSClient_Feeds_should_succeed(t *testing.T) {
 						assert.Len(t, allLogs, 0)
 					}
 
-					assert.Equal(t, m, msg)
+					assert.Equal(t, m, subMsg)
 				case feedErr := <-errFeeds:
 					t.Errorf("did not expect an error. got %v", feedErr)
 				}
