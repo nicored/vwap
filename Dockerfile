@@ -3,10 +3,10 @@ FROM golang:1.16 AS base
 COPY . /build
 WORKDIR /build
 
-RUN go test -v $(go list ./... | grep -v /vendor/) && \
+RUN go test --race -v $(go list ./... | grep -v /vendor/) && \
     go build -o vwap main.go
 
-ENTRYPOINT ["/bin/bash", "-c", "go test -v $(go list ./... | grep -v /vendor/)"]
+ENTRYPOINT ["/bin/bash", "-c", "go test --race -v $(go list ./... | grep -v /vendor/)"]
 
 FROM debian AS final
 

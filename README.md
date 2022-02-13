@@ -1,8 +1,7 @@
 # VWAP calculation engine
 
-## Overview
-
-TODO: Write up
+Implementation of a real-time VWAP (volume-weighted average price) calculation engine using the coinbase websocket feed
+to stream in trade executions and update the VWAP for each trading pair as updates become available.
 
 ## Test, build and run
 
@@ -47,7 +46,7 @@ to the provided writer.
 The VWAP outputs are written into a file, by default the file is located at `/tmp/vwap.txt`.
 Error logs are written to stdout. DEBUG messages are logged only in `dev` mode.
 
-**Config**
+## Config
 
 Config values are extracted from environment variables, and which can be set on `docker run`
 
