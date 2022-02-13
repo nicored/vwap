@@ -32,7 +32,7 @@ type Service struct {
 	maxDataPts int
 	output     io.Writer
 	stop       chan bool
-	running    atomic.Bool
+	running    *atomic.Bool
 }
 
 // NewService creates a new calculation engine service
@@ -55,6 +55,7 @@ func NewService(ctx context.Context, streamer Streamer, opts ...Option) *Service
 		maxDataPts: options.maxDataPts,
 		output:     options.output,
 		stop:       make(chan bool, 1),
+		running:    atomic.NewBool(false),
 	}
 }
 
@@ -92,10 +93,19 @@ func (s *Service) Run() error {
 
 	// subscribing to the streamer's channel for the available trading pairs
 	if err := s.streamer.Subscribe(coinbase.ChannelMatches, s.vwaps.tradingPairs()...); err != nil {
-		return fmt.Errorf("subscribe to channel: %w", err)
+		return fmt.Errorf("subscribe to matches channel: %w", err)
 	}
 
+	// retrieve trading-pair matches from exchange server
 	feeds, feedsErr := s.streamer.Feeds()
+	if err := s.handleFeeds(feeds, feedsErr); err != nil {
+		return fmt.Errorf("handle feeds: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) handleFeeds(feeds <-chan []byte, feedsErr <-chan error) error {
 	for {
 		select {
 		case <-s.stop:
@@ -105,21 +115,15 @@ func (s *Service) Run() error {
 			return nil
 
 		case fErr := <-feedsErr:
-			return fmt.Errorf("feeds: %w", fErr)
+			return fmt.Errorf("feed errors receiver: %w", fErr)
 
 		case msg := <-feeds:
-			exchMsg := ExchangeMsg{}
-			if err := json.Unmarshal(msg, &exchMsg); err != nil {
-				s.logger.Error("service run: failed to unmarshal message", zap.String("msg", string(msg)), zap.NamedError("error", err))
+			exchMsg, err := s.parseFeedMsg(msg)
+			if err != nil {
+				s.logger.Error("unsupported message for VWAP calculation", zap.NamedError("error", err), zap.String("msg", string(msg)))
 				continue
 			}
-
-			if exchMsg.Type == coinbase.TypeError {
-				s.logger.Error("service run: received an error message from the server", zap.String("msg", string(msg)))
-				continue
-			}
-
-			if exchMsg.Type != coinbase.TypeMatch {
+			if exchMsg == nil {
 				continue
 			}
 
@@ -143,6 +147,24 @@ func (s *Service) Run() error {
 	}
 }
 
+func (s *Service) parseFeedMsg(msg []byte) (*ExchangeMsg, error) {
+	exchMsg := &ExchangeMsg{}
+	if err := json.Unmarshal(msg, &exchMsg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal message: %w", err)
+	}
+
+	if exchMsg.Type == coinbase.TypeError {
+		return nil, fmt.Errorf("received an error message from the server: %s", exchMsg.Message)
+	}
+
+	// we only accept messages of 'match' type
+	if exchMsg.Type != coinbase.TypeMatch {
+		return nil, nil
+	}
+
+	return exchMsg, nil
+}
+
 // Stop stops the execution of the service
 func (s *Service) Stop() {
 	s.mu.Lock()
@@ -161,7 +183,7 @@ type vwapRecord struct {
 func (v *vwapRecord) updateVWAP(price string, volume string) error {
 	fprice, err := strconv.ParseFloat(price, 64)
 	if err != nil {
-		return fmt.Errorf("parse fprice '%s': %w", price, err)
+		return fmt.Errorf("parse price '%s': %w", price, err)
 	}
 
 	fvolume, err := strconv.ParseFloat(volume, 64)
@@ -170,7 +192,7 @@ func (v *vwapRecord) updateVWAP(price string, volume string) error {
 	}
 
 	if err := v.Push(fprice, fvolume); err != nil {
-		return fmt.Errorf("push trading-pair to VWAP")
+		return fmt.Errorf("push trading-pair to VWAP: %w", err)
 	}
 
 	return nil

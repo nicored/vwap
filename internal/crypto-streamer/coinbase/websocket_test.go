@@ -3,7 +3,6 @@ package coinbase
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -101,7 +100,7 @@ func TestNewClient(t *testing.T) {
 
 	tests := map[string]struct {
 		args       args
-		wantErr    error
+		wantErr    assert.ErrorAssertionFunc
 		wantLogger *zap.Logger
 	}{
 		"it should successfully create Client": {
@@ -109,21 +108,29 @@ func TestNewClient(t *testing.T) {
 				ctx:  context.Background(),
 				opts: []Option{WithLogger(nil)},
 			},
-			wantErr: nil,
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return false
+			},
 		},
-		"it error when a wrong url is provided": {
+		"it should error when a wrong url is provided": {
 			args: args{
 				ctx:  context.Background(),
 				opts: []Option{WithWSUrl("ws://this.will.throw.no.such.host")},
 			},
-			wantErr: errors.New("dial: dial ws server ws://this.will.throw.no.such.host: dial tcp: lookup this.will.throw.no.such.host: no such host"),
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "dial: dial ws server ws://this.will.throw.no.such.host")
+				return true
+			},
 		},
 		"it should add a logger": {
 			args: args{
 				ctx:  context.Background(),
 				opts: []Option{WithLogger(testLogger)},
 			},
-			wantErr:    nil,
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return false
+			},
 			wantLogger: testLogger,
 		},
 	}
@@ -140,13 +147,8 @@ func TestNewClient(t *testing.T) {
 				defer client.Close()
 			}
 
-			// assert err and expected error are the same
-			if (err != nil) != (tt.wantErr != nil) {
-				assert.Failf(t, "not equal", "got err %v, but want %v", err, tt.wantErr)
-			}
-
+			tt.wantErr(t, err)
 			if err != nil {
-				assert.EqualError(t, err, tt.wantErr.Error(), "err messages should be the same")
 				return
 			}
 

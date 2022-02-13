@@ -7,6 +7,7 @@ import (
 
 type ExchangeMsg struct {
 	Type      string `json:"type"`
+	Message   string `json:"message"`
 	ProductID string `json:"product_id"`
 	Size      string `json:"size"`
 	Price     string `json:"price"`
